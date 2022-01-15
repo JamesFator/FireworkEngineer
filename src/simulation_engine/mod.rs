@@ -61,7 +61,7 @@ impl SimulationEngine {
         match *event {
             Event::KeyUp {keycode, ..}
                 if keycode.unwrap() == sdl2::keyboard::Keycode::K => {
-                    self.selected_material = Material::def_sand();
+                    self.selected_material = Material::def_stone();
             },
             Event::KeyUp {keycode, ..}
                 if keycode.unwrap() == sdl2::keyboard::Keycode::S => {
