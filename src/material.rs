@@ -16,7 +16,6 @@ pub enum State {
 #[derive(Clone, Copy, Debug)]
 pub enum Material {
     Sand,
-    Water,
     Stone,
 }
 
@@ -26,11 +25,6 @@ impl Material {
             Material::Sand => RGB {
                 red: 255,
                 green: 255,
-                blue: 255,
-            },
-            Material::Water => RGB {
-                red: 51,
-                green: 187,
                 blue: 255,
             },
             Material::Stone => RGB {
@@ -44,17 +38,12 @@ impl Material {
     pub fn speed(&self) -> f32 {
         match *self {
             Material::Sand => 0.1f32,
-            Material::Water => 0.1f32,
             Material::Stone => 0.1f32,
         }
     }
 
     pub fn def_sand() -> Material {
         Material::Sand
-    }
-
-    pub fn def_water() -> Material {
-        Material::Water
     }
 
     pub fn def_stone() -> Material {

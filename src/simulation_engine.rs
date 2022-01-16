@@ -99,9 +99,6 @@ impl SimulationEngine {
         }
 
         if self.generation_counter.elapsed_gt(20) {
-            for cord in brushes::circle(10.0, 10, 200, self.buffer_height, self.buffer_width, 0.9) {
-                self.add_material_to_map(cord.0 as usize, cord.1 as usize, Material::def_water());
-            }
 
             for cord in brushes::circle(10.0, 10, 600, self.buffer_height, self.buffer_width, 0.9) {
                 self.add_material_to_map(cord.0 as usize, cord.1 as usize, Material::def_sand());
@@ -136,8 +133,6 @@ pub trait UpdateCellPositions {
     fn update_cell_positions(&mut self, _elapsed: &time::Duration);
     fn try_move_side_down(&mut self, y: usize, x: usize);
     fn handle_sand(&mut self, y: usize, x: usize);
-    fn handle_water(&mut self, y: usize, x: usize);
-    fn move_water_sideways(&mut self, y: usize, x: usize);
     fn move_material(&mut self, yfrom: usize, xfrom: usize, yto: usize, yto: usize);
     fn remove_material(&mut self, y: usize, x: usize);
     fn bulk_move(&mut self, y: usize, x: usize);
@@ -167,64 +162,7 @@ impl UpdateCellPositions for SimulationEngine {
         if self.map.something_at_index(y, x) && self.map.state_at_index(y, x) == State::Free {
             match self.map.material_at_index(y, x) {
                 Material::Sand => self.handle_sand(y, x),
-                Material::Water => self.handle_water(y, x),
                 Material::Stone => (),
-            }
-        }
-    }
-
-    fn handle_water(&mut self, y: usize, x: usize) {
-        if y < (self.buffer_height - 1) {
-            if !self.map.something_at_index(y + 1, x) {
-                self.move_material(y, x, y + 1, x);
-                self.map.change_state_at_index(y + 1, x, State::Set);
-            } else if self.map.something_at_index(y + 1, x) && x > 1 && x < (self.buffer_width - 2)
-            {
-                self.move_water_sideways(y, x);
-            }
-        } else {
-            self.remove_material(y, x);
-        }
-    }
-
-    fn move_water_sideways(&mut self, y: usize, x: usize) {
-        if rand::random::<bool>() {
-            if !self.map.something_at_index(y, x + 2) {
-                self.move_material(y, x, y, x + 2);
-                self.map.change_state_at_index(y, x + 2, State::Set);
-            } else if !self.map.something_at_index(y + 1, x + 1) {
-                self.move_material(y, x, y + 1, x + 1);
-                self.map.change_state_at_index(y + 1, x + 1, State::Set);
-            } else if !self.map.something_at_index(y, x - 2) {
-                self.move_material(y, x, y, x - 2);
-                self.map.change_state_at_index(y, x - 2, State::Set);
-            } else if !self.map.something_at_index(y, x - 1) {
-                self.move_material(y, x, y, x - 1);
-                self.map.change_state_at_index(y, x - 1, State::Set);
-            } else if !self.map.something_at_index(y + 1, x - 1) {
-                self.move_material(y, x, y + 1, x - 1);
-                self.map.change_state_at_index(y + 1, x - 1, State::Set);
-            } else {
-                self.map.change_state_at_index(y, x, State::Set);
-            }
-        } else {
-            if !self.map.something_at_index(y, x - 2) {
-                self.move_material(y, x, y, x - 2);
-                self.map.change_state_at_index(y, x - 2, State::Set);
-            } else if !self.map.something_at_index(y + 1, x - 1) {
-                self.move_material(y, x, y + 1, x - 1);
-                self.map.change_state_at_index(y + 1, x - 1, State::Set);
-            } else if !self.map.something_at_index(y, x + 2) {
-                self.move_material(y, x, y, x + 2);
-                self.map.change_state_at_index(y, x + 2, State::Set);
-            } else if !self.map.something_at_index(y, x + 1) {
-                self.move_material(y, x, y, x + 1);
-                self.map.change_state_at_index(y, x + 1, State::Set);
-            } else if !self.map.something_at_index(y + 1, x + 1) {
-                self.move_material(y, x, y + 1, x + 1);
-                self.map.change_state_at_index(y + 1, x + 1, State::Set);
-            } else {
-                self.map.change_state_at_index(y, x, State::Set);
             }
         }
     }
