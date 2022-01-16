@@ -15,19 +15,19 @@ pub fn main() {
     let video_subsystem = sdl_context.video().unwrap();
     let window = video_subsystem
         .window(
-            "prowst",
+            "FireworkEngineer",
             window::SCREEN_WIDTH as u32,
             window::SCREEN_HEIGHT as u32,
         )
         .position_centered()
         .opengl()
         .build()
-        .expect("could not initialize video subsystem");
+        .expect("Could not initialize video subsystem");
 
     let mut canvas = window
         .into_canvas()
         .build()
-        .expect("could not make a canvas");
+        .expect("Could not make a canvas");
     let texture_creator = canvas.texture_creator();
 
     let mut texture = texture_creator

@@ -24,6 +24,8 @@ impl MaterialMap {
         let m = MaterialRecord {
             mat: material,
             state: State::Free,
+            force_y: 0i8,
+            force_x: 0i8,
         };
         self.mat_map[y * self.map_width + x].contents = Some(m);
     }
@@ -31,6 +33,17 @@ impl MaterialMap {
     pub fn change_state_at_index(&mut self, y: usize, x: usize, state: State) {
         if let Some(i) = self.mat_map[y * self.map_width + x].contents.as_mut() {
             i.state = state;
+            if state == State::Free {
+                i.force_y = 0;
+                i.force_x = 0;
+            }
+        }
+    }
+
+    pub fn change_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
+        if let Some(i) = self.mat_map[y * self.map_width + x].contents.as_mut() {
+            i.force_y += force_y;
+            i.force_x += force_x;
         }
     }
 

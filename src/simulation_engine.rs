@@ -24,7 +24,7 @@ pub struct SimulationEngine {
     selected_material: Material,
     pixel_buffer: [u8; window::SCREEN_WIDTH * window::SCREEN_HEIGHT * 3],
     // Consider moving this into a different struct
-    cum_elapsed: Duration,
+    elapsed: Duration,
     frame_counter: i32,
     update_counter: i32,
 }
@@ -41,7 +41,7 @@ impl SimulationEngine {
             selected_material: Material::def_stone(),
             map: MaterialMap::new(width, height),
             pixel_buffer: [0; window::SCREEN_HEIGHT * window::SCREEN_WIDTH * 3],
-            cum_elapsed: Duration::seconds(0),
+            elapsed: Duration::seconds(0),
             frame_counter: 0,
             update_counter: 0,
         }
@@ -99,7 +99,6 @@ impl SimulationEngine {
         }
 
         if self.generation_counter.elapsed_gt(20) {
-
             for cord in brushes::circle(10.0, 10, 600, self.buffer_height, self.buffer_width, 0.9) {
                 self.add_material_to_map(cord.0 as usize, cord.1 as usize, Material::def_sand());
             }
@@ -113,14 +112,14 @@ impl SimulationEngine {
         let last_render_time = self.time_at_last_render;
         self.time_at_last_render = time::Instant::now();
         let time_between_render = self.time_at_last_render - last_render_time;
-        self.cum_elapsed = self.cum_elapsed + time_between_render;
+        self.elapsed = self.elapsed + time_between_render;
 
-        if self.cum_elapsed > time::Duration::seconds(1) {
+        if self.elapsed > time::Duration::seconds(1) {
             println!("frames per second {}", self.frame_counter);
             println!("updates per second {}", self.update_counter);
             self.frame_counter = 0;
             self.update_counter = 0;
-            self.cum_elapsed = Duration::seconds(0);
+            self.elapsed = Duration::seconds(0);
         }
     }
 
@@ -131,11 +130,11 @@ impl SimulationEngine {
 
 pub trait UpdateCellPositions {
     fn update_cell_positions(&mut self, _elapsed: &time::Duration);
+    fn gravity(&mut self);
     fn try_move_side_down(&mut self, y: usize, x: usize);
-    fn handle_sand(&mut self, y: usize, x: usize);
+    fn handle_material(&mut self, y: usize, x: usize);
     fn move_material(&mut self, yfrom: usize, xfrom: usize, yto: usize, yto: usize);
     fn remove_material(&mut self, y: usize, x: usize);
-    fn bulk_move(&mut self, y: usize, x: usize);
     fn block_to_right(&self, y: usize, x: usize, count: usize) -> bool;
     fn block_to_left(&self, y: usize, x: usize, count: usize) -> bool;
     fn block_above(&self, y: usize, x: usize, count: usize) -> bool;
@@ -145,6 +144,7 @@ pub trait UpdateCellPositions {
 impl UpdateCellPositions for SimulationEngine {
     fn update_cell_positions(&mut self, _elapsed: &time::Duration) {
         self.map.reset_states();
+        self.gravity();
         for y in 0..self.buffer_height {
             if rand::random::<bool>() {
                 for x in 0..self.buffer_width {
@@ -158,10 +158,18 @@ impl UpdateCellPositions for SimulationEngine {
         }
     }
 
+    fn gravity(&mut self) {
+        for y in 0..self.buffer_height {
+            for x in 0..self.buffer_width {
+                self.map.change_force_at_index(y, x, -1, 0);
+            }
+        }
+    }
+
     fn update_loop_inner(&mut self, y: usize, x: usize) {
         if self.map.something_at_index(y, x) && self.map.state_at_index(y, x) == State::Free {
             match self.map.material_at_index(y, x) {
-                Material::Sand => self.handle_sand(y, x),
+                Material::Sand => self.handle_material(y, x),
                 Material::Stone => (),
             }
         }
@@ -194,18 +202,45 @@ impl UpdateCellPositions for SimulationEngine {
         self.pixel_buffer[offset + 2] = 0;
     }
 
-    fn handle_sand(&mut self, y: usize, x: usize) {
-        if y < (self.buffer_height - 1)
-            && self.map.something_at_index(y + 1, x)
-            && x > 0
-            && x < (self.buffer_width - 1)
-        {
-            self.try_move_side_down(y, x);
-        } else if y < (self.buffer_height - 1) && !self.map.something_at_index(y + 1, x) {
-            self.move_material(y, x, y + 1, x);
-            self.map.change_state_at_index(y + 1, x, State::Set);
-        } else {
-            self.remove_material(y, x);
+    fn handle_material(&mut self, orig_y: usize, orig_x: usize) {
+        let mut y = orig_y;
+        let mut x = orig_x;
+        let mat = self.map.contents_at_index(y, x).unwrap();
+        if mat.force_y > 0 {
+            if y > 0 && !self.map.something_at_index(y - 1, x) {
+                self.move_material(y, x, y - 1, x);
+                self.map.change_state_at_index(y - 1, x, State::Set);
+                y -= 1;
+            } else if y == 0 {
+                self.remove_material(y, x);
+                return;
+            }
+        } else if mat.force_y < 0 {
+            if y < (self.buffer_height - 1) && !self.map.something_at_index(y + 1, x) {
+                self.move_material(y, x, y + 1, x);
+                self.map.change_state_at_index(y + 1, x, State::Set);
+                y += 1;
+            }
+        }
+
+        if mat.force_x > 0 {
+            if x < (self.buffer_width - 1) && !self.map.something_at_index(y, x + 1) {
+                self.move_material(y, x, y, x + 1);
+                self.map.change_state_at_index(y, x + 1, State::Set);
+                // x += 1;
+            } else if x == self.buffer_width - 1 {
+                self.remove_material(y, x);
+                return;
+            }
+        } else if mat.force_x < 0 {
+            if x > 0 && !self.map.something_at_index(y, x - 1) {
+                self.move_material(y, x, y, x - 1);
+                self.map.change_state_at_index(y, x - 1, State::Set);
+                // x -= 1;
+            } else if x == 0 {
+                self.remove_material(y, x);
+                return;
+            }
         }
     }
 
@@ -255,29 +290,5 @@ impl UpdateCellPositions for SimulationEngine {
             ret = ret && self.map.something_at_index(y + i, x);
         }
         ret
-    }
-
-    fn bulk_move(&mut self, y: usize, x: usize) {
-        if y > 4 && y < (self.buffer_height - 4) {
-            if self.block_above(y, x, 4) {
-                if self.block_to_right(y, x, 4) {
-                    if !self.map.something_at_index(y, x - 3) {
-                        self.move_material(y, x, y, x - 3);
-                        self.map.change_state_at_index(y, x - 3, State::Set);
-                    } else {
-                        self.map.change_state_at_index(y, x, State::Set);
-                    }
-                } else if self.block_to_left(y, x, 4) {
-                    if !self.map.something_at_index(y, x + 3) {
-                        self.move_material(y, x, y, x + 3);
-                        self.map.change_state_at_index(y, x + 3, State::Set);
-                    } else {
-                        self.map.change_state_at_index(y, x, State::Set);
-                    }
-                }
-            }
-        } else {
-            self.map.change_state_at_index(y, x, State::Set);
-        }
     }
 }
