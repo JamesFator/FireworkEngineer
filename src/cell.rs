@@ -1,5 +1,5 @@
-use material::Material;
-use material::State;
+use crate::material::Material;
+use crate::material::State;
 
 #[derive(Copy, Clone, Debug)]
 pub struct MaterialRecord {

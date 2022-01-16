@@ -1,15 +1,16 @@
 [package]
-name = "prowst"
+name = "firework_engineer"
 version = "0.1.0"
-authors = ["mmihira <mmihira.w@gmail.com>"]
+authors = ["James Fator <jamesfator@gmail.com>"]
+edition = "2021"
 
 [dependencies]
-time = "0.1.36"
-uuid = { version = "0.5", features = ["v4"] }
-rand = "*"
+time = "0.3.5"
+uuid = { version = "0.8.2", features = ["v4"] }
+rand = "0.8.4"
 
 [dependencies.sdl2]
-version = "0.29"
+version = "0.35.1"
 default-features = false
 features = ["gfx"]
 
