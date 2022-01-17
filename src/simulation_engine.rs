@@ -27,6 +27,7 @@ pub struct SimulationEngine {
     elapsed: Duration,
     frame_counter: i32,
     update_counter: i32,
+    updating: bool,
 }
 
 impl SimulationEngine {
@@ -44,17 +45,25 @@ impl SimulationEngine {
             elapsed: Duration::seconds(0),
             frame_counter: 0,
             update_counter: 0,
+            updating: true,
         }
     }
 
     pub fn handle_event(&mut self, event: &Event) {
         match *event {
-            Event::KeyUp { keycode, .. } if keycode.unwrap() == sdl2::keyboard::Keycode::K => {
-                self.selected_material = Material::def_stone();
-            }
-            Event::KeyUp { keycode, .. } if keycode.unwrap() == sdl2::keyboard::Keycode::S => {
-                self.selected_material = Material::def_sand();
-            }
+            Event::KeyUp { keycode, .. } => match keycode.unwrap() {
+                // https://docs.rs/sdl2/latest/sdl2/keyboard/enum.Keycode.html
+                sdl2::keyboard::Keycode::K => {
+                    self.selected_material = Material::def_stone();
+                }
+                sdl2::keyboard::Keycode::S => {
+                    self.selected_material = Material::def_sand();
+                }
+                sdl2::keyboard::Keycode::Space => {
+                    self.updating = !self.updating;
+                }
+                _ => {}
+            },
             Event::MouseButtonDown { .. } => {
                 self.mouse_button_down = true;
             }
@@ -92,18 +101,26 @@ impl SimulationEngine {
         let previous_update = self.time_at_last_update;
         let time_elapsed = time::Instant::now() - previous_update;
 
-        if time_elapsed >= time::Duration::milliseconds(10) {
-            self.update_cell_positions(&time_elapsed);
-            self.time_at_last_update = time::Instant::now();
-            self.update_counter = self.update_counter + 1;
-        }
-
-        if self.generation_counter.elapsed_gt(20) {
-            for cord in brushes::circle(10.0, 10, 600, self.buffer_height, self.buffer_width, 0.9) {
-                self.add_material_to_map(cord.0 as usize, cord.1 as usize, Material::def_sand());
+        if self.updating {
+            if time_elapsed >= time::Duration::milliseconds(10) {
+                self.update_cell_positions(&time_elapsed);
+                self.time_at_last_update = time::Instant::now();
+                self.update_counter = self.update_counter + 1;
             }
 
-            self.generation_counter.reset();
+            if self.generation_counter.elapsed_gt(20) {
+                for cord in
+                    brushes::circle(10.0, 10, 600, self.buffer_height, self.buffer_width, 0.9)
+                {
+                    self.add_material_to_map(
+                        cord.0 as usize,
+                        cord.1 as usize,
+                        Material::def_sand(),
+                    );
+                }
+
+                self.generation_counter.reset();
+            }
         }
 
         self.update_texture(texture);
@@ -204,7 +221,7 @@ impl UpdateCellPositions for SimulationEngine {
 
     fn handle_material(&mut self, orig_y: usize, orig_x: usize) {
         let mut y = orig_y;
-        let mut x = orig_x;
+        let x = orig_x;
         let mat = self.map.contents_at_index(y, x).unwrap();
         if mat.force_y > 0 {
             if y > 0 && !self.map.something_at_index(y - 1, x) {
