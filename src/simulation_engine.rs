@@ -6,6 +6,7 @@ use time::Duration;
 
 use rand;
 
+use crate::bodies;
 use crate::brushes;
 use crate::counter::Counter;
 use crate::material::Material;
@@ -28,6 +29,7 @@ pub struct SimulationEngine {
     frame_counter: i32,
     update_counter: i32,
     updating: bool,
+    generator: bool,
 }
 
 impl SimulationEngine {
@@ -39,13 +41,14 @@ impl SimulationEngine {
             time_at_last_render: time::Instant::now(),
             generation_counter: Counter::new(),
             mouse_button_down: false,
-            selected_material: Material::def_stone(),
+            selected_material: Material::Sand,
             map: MaterialMap::new(width, height),
             pixel_buffer: [0; window::SCREEN_HEIGHT * window::SCREEN_WIDTH * 3],
             elapsed: Duration::seconds(0),
             frame_counter: 0,
             update_counter: 0,
             updating: true,
+            generator: false,
         }
     }
 
@@ -54,18 +57,30 @@ impl SimulationEngine {
             Event::KeyUp { keycode, .. } => match keycode.unwrap() {
                 // https://docs.rs/sdl2/latest/sdl2/keyboard/enum.Keycode.html
                 sdl2::keyboard::Keycode::K => {
-                    self.selected_material = Material::def_stone();
+                    self.selected_material = Material::Stone;
                 }
                 sdl2::keyboard::Keycode::S => {
-                    self.selected_material = Material::def_sand();
+                    self.selected_material = Material::Sand;
+                }
+                sdl2::keyboard::Keycode::P => {
+                    self.selected_material = Material::Pressure;
+                }
+                sdl2::keyboard::Keycode::G => {
+                    self.generator = !self.generator;
                 }
                 sdl2::keyboard::Keycode::Space => {
                     self.updating = !self.updating;
                 }
                 _ => {}
             },
-            Event::MouseButtonDown { .. } => {
+            Event::MouseButtonDown { x, y, .. } => {
                 self.mouse_button_down = true;
+                println!("(Y, X) ({}, {})", y, x);
+                for cord in
+                    brushes::circle(2.0, y, x, self.buffer_height, self.buffer_width, 0.00001)
+                {
+                    self.add_selected_to_map(cord.0 as usize, cord.1 as usize);
+                }
             }
             Event::MouseButtonUp { .. } => self.mouse_button_down = false,
             Event::MouseMotion { x, y, .. } => {
@@ -108,15 +123,11 @@ impl SimulationEngine {
                 self.update_counter = self.update_counter + 1;
             }
 
-            if self.generation_counter.elapsed_gt(20) {
+            if self.generator && self.generation_counter.elapsed_gt(20) {
                 for cord in
                     brushes::circle(10.0, 10, 600, self.buffer_height, self.buffer_width, 0.9)
                 {
-                    self.add_material_to_map(
-                        cord.0 as usize,
-                        cord.1 as usize,
-                        Material::def_sand(),
-                    );
+                    self.add_material_to_map(cord.0 as usize, cord.1 as usize, Material::Sand);
                 }
 
                 self.generation_counter.reset();
@@ -132,8 +143,10 @@ impl SimulationEngine {
         self.elapsed = self.elapsed + time_between_render;
 
         if self.elapsed > time::Duration::seconds(1) {
-            println!("frames per second {}", self.frame_counter);
-            println!("updates per second {}", self.update_counter);
+            println!(
+                "FPS {} - Updates/Second {}",
+                self.frame_counter, self.update_counter
+            );
             self.frame_counter = 0;
             self.update_counter = 0;
             self.elapsed = Duration::seconds(0);
@@ -148,13 +161,12 @@ impl SimulationEngine {
 pub trait UpdateCellPositions {
     fn update_cell_positions(&mut self, _elapsed: &time::Duration);
     fn gravity(&mut self);
+    fn pressure(&mut self);
+    fn average_body_forces(&mut self);
     fn try_move_side_down(&mut self, y: usize, x: usize);
     fn handle_material(&mut self, y: usize, x: usize);
     fn move_material(&mut self, yfrom: usize, xfrom: usize, yto: usize, yto: usize);
     fn remove_material(&mut self, y: usize, x: usize);
-    fn block_to_right(&self, y: usize, x: usize, count: usize) -> bool;
-    fn block_to_left(&self, y: usize, x: usize, count: usize) -> bool;
-    fn block_above(&self, y: usize, x: usize, count: usize) -> bool;
     fn update_loop_inner(&mut self, y: usize, x: usize);
 }
 
@@ -162,6 +174,8 @@ impl UpdateCellPositions for SimulationEngine {
     fn update_cell_positions(&mut self, _elapsed: &time::Duration) {
         self.map.reset_states();
         self.gravity();
+        self.pressure();
+        self.average_body_forces();
         for y in 0..self.buffer_height {
             if rand::random::<bool>() {
                 for x in 0..self.buffer_width {
@@ -178,7 +192,73 @@ impl UpdateCellPositions for SimulationEngine {
     fn gravity(&mut self) {
         for y in 0..self.buffer_height {
             for x in 0..self.buffer_width {
-                self.map.change_force_at_index(y, x, -1, 0);
+                self.map.add_force_at_index(y, x, -1, 0);
+            }
+        }
+    }
+
+    fn pressure(&mut self) {
+        // For each Pressure instance on the grid, apply outward forces
+        let power: usize = 20;
+        for y in power..(self.buffer_height - power) {
+            for x in power..(self.buffer_width - power) {
+                if let Some(mat) = self.map.contents_at_index(y, x) {
+                    if mat.mat != Material::Pressure {
+                        continue; // If not a Pressure tile, we don't care
+                    }
+                } else {
+                    continue;
+                }
+                for yi in (y - power)..(y + power) {
+                    for xi in (x - power)..(x + power) {
+                        if yi == y && xi == x {
+                            continue; // Skip the pressure instance
+                        }
+
+                        // TODO: Maybe add higher force for closer objects
+                        let force_y = if yi < y { 1 } else { -1 };
+                        let force_x = if xi < x { -1 } else { 1 };
+
+                        // Push objects outwards if they're within a certain distance
+                        let distance = ((x as f64 - xi as f64).powf(2.0)
+                            + (y as f64 - yi as f64).powf(2.0))
+                        .sqrt();
+                        if distance < power as f64 {
+                            self.map.add_force_at_index(yi, xi, force_y, force_x);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn average_body_forces(&mut self) {
+        // Given the current forces on each object, average them all then override each
+        // pixel's force with the average. This way we can get bodies to move together.
+        let bodies = bodies::find_bodies(&self.map, self.buffer_height, self.buffer_width);
+
+        for body in bodies {
+            // Determine the average forces on the body
+            let mut total_force_y = 0 as i64;
+            let mut total_force_x = 0 as i64;
+            let mut num_pixels = 0 as i64;
+            for coord in &body {
+                let contents = self.map.contents_at_index(coord.0, coord.1).unwrap();
+                total_force_y += contents.force_y as i64;
+                total_force_x += contents.force_x as i64;
+                num_pixels += 1;
+            }
+
+            // Override the forces
+            let avg_force_y = total_force_y / num_pixels;
+            let avg_force_x = total_force_x / num_pixels;
+            for coord in &body {
+                self.map.override_force_at_index(
+                    coord.0,
+                    coord.1,
+                    avg_force_y as i8,
+                    avg_force_x as i8,
+                );
             }
         }
     }
@@ -186,8 +266,9 @@ impl UpdateCellPositions for SimulationEngine {
     fn update_loop_inner(&mut self, y: usize, x: usize) {
         if self.map.something_at_index(y, x) && self.map.state_at_index(y, x) == State::Free {
             match self.map.material_at_index(y, x) {
-                Material::Sand => self.handle_material(y, x),
                 Material::Stone => (),
+                Material::Pressure => (),
+                _ => self.handle_material(y, x),
             }
         }
     }
@@ -283,29 +364,5 @@ impl UpdateCellPositions for SimulationEngine {
                 self.map.change_state_at_index(y, x, State::Set);
             }
         }
-    }
-
-    fn block_to_right(&self, y: usize, x: usize, count: usize) -> bool {
-        let mut ret = true;
-        for i in 0..count {
-            ret = ret && self.map.something_at_index(y, x + i);
-        }
-        ret
-    }
-
-    fn block_to_left(&self, y: usize, x: usize, count: usize) -> bool {
-        let mut ret = true;
-        for i in 0..count {
-            ret = ret && self.map.something_at_index(y, x - i);
-        }
-        ret
-    }
-
-    fn block_above(&self, y: usize, x: usize, count: usize) -> bool {
-        let mut ret = true;
-        for i in 0..count {
-            ret = ret && self.map.something_at_index(y + i, x);
-        }
-        ret
     }
 }

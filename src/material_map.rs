@@ -40,10 +40,17 @@ impl MaterialMap {
         }
     }
 
-    pub fn change_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
+    pub fn add_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
         if let Some(i) = self.mat_map[y * self.map_width + x].contents.as_mut() {
-            i.force_y += force_y;
-            i.force_x += force_x;
+            i.force_y = std::cmp::min(i.force_y as i16 + force_y as i16, i8::MAX as i16) as i8;
+            i.force_x = std::cmp::min(i.force_x as i16 + force_x as i16, i8::MAX as i16) as i8;
+        }
+    }
+
+    pub fn override_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
+        if let Some(i) = self.mat_map[y * self.map_width + x].contents.as_mut() {
+            i.force_y = force_y;
+            i.force_x = force_x;
         }
     }
 

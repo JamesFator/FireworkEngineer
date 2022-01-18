@@ -13,10 +13,11 @@ pub enum State {
     Dead,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Material {
     Sand,
     Stone,
+    Pressure,
 }
 
 impl Material {
@@ -32,6 +33,11 @@ impl Material {
                 green: 102,
                 blue: 153,
             },
+            Material::Pressure => RGB {
+                red: 253,
+                green: 208,
+                blue: 23,
+            },
         }
     }
 
@@ -39,14 +45,7 @@ impl Material {
         match *self {
             Material::Sand => 0.1f32,
             Material::Stone => 0.1f32,
+            Material::Pressure => 0.1f32,
         }
-    }
-
-    pub fn def_sand() -> Material {
-        Material::Sand
-    }
-
-    pub fn def_stone() -> Material {
-        Material::Stone
     }
 }

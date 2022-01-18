@@ -16,8 +16,8 @@ pub fn main() {
     let window = video_subsystem
         .window(
             "FireworkEngineer",
-            window::SCREEN_WIDTH as u32,
-            window::SCREEN_HEIGHT as u32,
+            window::SCREEN_WIDTH as u32 * 2,
+            window::SCREEN_HEIGHT as u32 * 2,
         )
         .position_centered()
         .opengl()
@@ -28,6 +28,12 @@ pub fn main() {
         .into_canvas()
         .build()
         .expect("Could not make a canvas");
+    canvas
+        .set_logical_size(
+            window::SCREEN_WIDTH as u32,
+            window::SCREEN_HEIGHT as u32,
+        )
+        .unwrap();
     let texture_creator = canvas.texture_creator();
 
     let mut texture = texture_creator

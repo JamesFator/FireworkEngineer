@@ -1,3 +1,4 @@
+pub mod bodies;
 pub mod brushes;
 pub mod cell;
 pub mod counter;
