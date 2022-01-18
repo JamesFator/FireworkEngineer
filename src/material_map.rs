@@ -8,6 +8,7 @@ use crate::window;
 pub struct MaterialMap {
     map_width: usize,
     map_height: usize,
+    max_index: usize,
     pub mat_map: [Cell; window::SCREEN_HEIGHT * window::SCREEN_WIDTH],
 }
 
@@ -16,6 +17,7 @@ impl MaterialMap {
         MaterialMap {
             map_width: width,
             map_height: height,
+            max_index: (height - 1) * width + (width - 1),
             mat_map: [Cell::default(); window::SCREEN_WIDTH * window::SCREEN_HEIGHT],
         }
     }
@@ -41,21 +43,33 @@ impl MaterialMap {
     }
 
     pub fn add_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
-        if let Some(i) = self.mat_map[y * self.map_width + x].contents.as_mut() {
+        let index = y * self.map_width + x;
+        if index > self.max_index {
+            return;
+        }
+        if let Some(i) = self.mat_map[index].contents.as_mut() {
             i.force_y = std::cmp::min(i.force_y as i16 + force_y as i16, i8::MAX as i16) as i8;
             i.force_x = std::cmp::min(i.force_x as i16 + force_x as i16, i8::MAX as i16) as i8;
         }
     }
 
     pub fn override_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
-        if let Some(i) = self.mat_map[y * self.map_width + x].contents.as_mut() {
+        let index = y * self.map_width + x;
+        if index > self.max_index {
+            return;
+        }
+        if let Some(i) = self.mat_map[index].contents.as_mut() {
             i.force_y = force_y;
             i.force_x = force_x;
         }
     }
 
     pub fn something_at_index(&self, y: usize, x: usize) -> bool {
-        self.mat_map[y * self.map_width + x].contents.is_some()
+        let index = y * self.map_width + x;
+        if index > self.max_index {
+            return false;
+        }
+        self.mat_map[index].contents.is_some()
     }
 
     pub fn material_at_index(&self, y: usize, x: usize) -> Material {
@@ -63,7 +77,11 @@ impl MaterialMap {
     }
 
     pub fn contents_at_index(&self, y: usize, x: usize) -> Option<MaterialRecord> {
-        self.mat_map[y * self.map_width + x].contents
+        let index = y * self.map_width + x;
+        if index > self.max_index {
+            return None;
+        }
+        self.mat_map[index].contents
     }
 
     pub fn state_at_index(&self, y: usize, x: usize) -> State {

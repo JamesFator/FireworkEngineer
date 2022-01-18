@@ -20,7 +20,7 @@ pub struct SimulationEngine {
     time_at_last_update: time::Instant,
     time_at_last_render: time::Instant,
     generation_counter: Counter,
-    map: MaterialMap,
+    map: Box<MaterialMap>,
     mouse_button_down: bool,
     selected_material: Material,
     pixel_buffer: [u8; window::SCREEN_WIDTH * window::SCREEN_HEIGHT * 3],
@@ -42,7 +42,7 @@ impl SimulationEngine {
             generation_counter: Counter::new(),
             mouse_button_down: false,
             selected_material: Material::Sand,
-            map: MaterialMap::new(width, height),
+            map: Box::new(MaterialMap::new(width, height)),
             pixel_buffer: [0; window::SCREEN_HEIGHT * window::SCREEN_WIDTH * 3],
             elapsed: Duration::seconds(0),
             frame_counter: 0,
@@ -56,16 +56,25 @@ impl SimulationEngine {
         match *event {
             Event::KeyUp { keycode, .. } => match keycode.unwrap() {
                 // https://docs.rs/sdl2/latest/sdl2/keyboard/enum.Keycode.html
-                sdl2::keyboard::Keycode::K => {
-                    self.selected_material = Material::Stone;
-                }
                 sdl2::keyboard::Keycode::S => {
                     self.selected_material = Material::Sand;
+                }
+                sdl2::keyboard::Keycode::G => {
+                    self.selected_material = Material::Ground;
+                }
+                sdl2::keyboard::Keycode::E => {
+                    self.selected_material = Material::Explosive;
+                }
+                sdl2::keyboard::Keycode::F => {
+                    self.selected_material = Material::Fire {
+                        duration: 30,
+                        pressure: 0,
+                    };
                 }
                 sdl2::keyboard::Keycode::P => {
                     self.selected_material = Material::Pressure;
                 }
-                sdl2::keyboard::Keycode::G => {
+                sdl2::keyboard::Keycode::W => {
                     self.generator = !self.generator;
                 }
                 sdl2::keyboard::Keycode::Space => {
@@ -102,14 +111,12 @@ impl SimulationEngine {
     }
 
     fn add_material_to_map(&mut self, y: usize, x: usize, material: Material) {
-        if !self.map.something_at_index(y, x) {
-            let offset = y * window::SCREEN_WIDTH * 3 + x * 3;
-            let rgb = material.rgb();
-            self.pixel_buffer[offset + 0] = rgb.red as u8;
-            self.pixel_buffer[offset + 1] = rgb.green as u8;
-            self.pixel_buffer[offset + 2] = rgb.blue as u8;
-            self.map.add_material(y, x, material);
-        }
+        let offset = y * window::SCREEN_WIDTH * 3 + x * 3;
+        let rgb = material.rgb();
+        self.pixel_buffer[offset + 0] = rgb.red as u8;
+        self.pixel_buffer[offset + 1] = rgb.green as u8;
+        self.pixel_buffer[offset + 2] = rgb.blue as u8;
+        self.map.add_material(y, x, material);
     }
 
     pub fn update(&mut self, texture: &mut sdl2::render::Texture) {
@@ -161,6 +168,7 @@ impl SimulationEngine {
 pub trait UpdateCellPositions {
     fn update_cell_positions(&mut self, _elapsed: &time::Duration);
     fn gravity(&mut self);
+    fn fire(&mut self);
     fn pressure(&mut self);
     fn average_body_forces(&mut self);
     fn try_move_side_down(&mut self, y: usize, x: usize);
@@ -174,6 +182,7 @@ impl UpdateCellPositions for SimulationEngine {
     fn update_cell_positions(&mut self, _elapsed: &time::Duration) {
         self.map.reset_states();
         self.gravity();
+        self.fire();
         self.pressure();
         self.average_body_forces();
         for y in 0..self.buffer_height {
@@ -197,11 +206,72 @@ impl UpdateCellPositions for SimulationEngine {
         }
     }
 
+    fn fire(&mut self) {
+        for y in 0..self.buffer_height {
+            for x in 0..self.buffer_width {
+                if let Some(mat) = self.map.contents_at_index(y, x) {
+                    match mat.mat {
+                        Material::Fire { duration, pressure } => {
+                            // Deteriorate the fire
+                            if duration <= 0 && pressure > 0 {
+                                self.add_material_to_map(
+                                    y,
+                                    x,
+                                    Material::Pressure,
+                                );
+                            } else if duration > 0 {
+                                self.add_material_to_map(
+                                    y,
+                                    x,
+                                    Material::Fire {
+                                        duration: duration - 1,
+                                        pressure,
+                                    },
+                                );
+                            } else {
+                                self.remove_material(y, x);
+                            }
+                        }
+                        _ => {
+                            continue;
+                        }
+                    }
+                } else {
+                    continue;
+                }
+                // Catch everything else on fire
+                for yi in (y - 1)..(y + 2) {
+                    for xi in (x - 1)..(x + 2) {
+                        if yi == y && xi == x {
+                            continue; // Skip the pressure instance
+                        }
+                        if let Some(contents) = self.map.contents_at_index(yi, xi) {
+                            match contents.mat {
+                                Material::Explosive => {
+                                    self.add_material_to_map(
+                                        yi,
+                                        xi,
+                                        Material::Fire {
+                                            duration: 15,
+                                            pressure: 20,
+                                        },
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn pressure(&mut self) {
         // For each Pressure instance on the grid, apply outward forces
         let power: usize = 20;
-        for y in power..(self.buffer_height - power) {
-            for x in power..(self.buffer_width - power) {
+        let touched_pct: f64 = 0.05;
+        for y in 0..self.buffer_height {
+            for x in 0..self.buffer_width {
                 if let Some(mat) = self.map.contents_at_index(y, x) {
                     if mat.mat != Material::Pressure {
                         continue; // If not a Pressure tile, we don't care
@@ -209,11 +279,14 @@ impl UpdateCellPositions for SimulationEngine {
                 } else {
                     continue;
                 }
+                let mut num_touched: i64 = 0;
+                let mut num_possible: i64 = 0;
                 for yi in (y - power)..(y + power) {
                     for xi in (x - power)..(x + power) {
                         if yi == y && xi == x {
                             continue; // Skip the pressure instance
                         }
+                        num_possible += 1;
 
                         // TODO: Maybe add higher force for closer objects
                         let force_y = if yi < y { 1 } else { -1 };
@@ -224,9 +297,17 @@ impl UpdateCellPositions for SimulationEngine {
                             + (y as f64 - yi as f64).powf(2.0))
                         .sqrt();
                         if distance < power as f64 {
-                            self.map.add_force_at_index(yi, xi, force_y, force_x);
+                            if let Some(mat) = self.map.contents_at_index(yi, xi) {
+                                if mat.mat != Material::Pressure {
+                                    self.map.add_force_at_index(yi, xi, force_y, force_x);
+                                    num_touched += 1;
+                                }
+                            }
                         }
                     }
+                }
+                if num_touched as f64 / (num_possible as f64) < touched_pct {
+                    self.remove_material(y, x);
                 }
             }
         }
@@ -266,7 +347,7 @@ impl UpdateCellPositions for SimulationEngine {
     fn update_loop_inner(&mut self, y: usize, x: usize) {
         if self.map.something_at_index(y, x) && self.map.state_at_index(y, x) == State::Free {
             match self.map.material_at_index(y, x) {
-                Material::Stone => (),
+                Material::Ground => (),
                 Material::Pressure => (),
                 _ => self.handle_material(y, x),
             }

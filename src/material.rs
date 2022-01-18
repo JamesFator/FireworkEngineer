@@ -16,7 +16,10 @@ pub enum State {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Material {
     Sand,
-    Stone,
+    Ground,
+    Explosive,
+    // Fire duration is the amount of updates it has until it's extinguished.
+    Fire { duration: i16, pressure: i8 },
     Pressure,
 }
 
@@ -28,24 +31,26 @@ impl Material {
                 green: 255,
                 blue: 255,
             },
-            Material::Stone => RGB {
+            Material::Ground => RGB {
                 red: 102,
                 green: 102,
                 blue: 153,
             },
-            Material::Pressure => RGB {
-                red: 253,
-                green: 208,
-                blue: 23,
+            Material::Explosive => RGB {
+                red: 255,
+                green: 255,
+                blue: 0,
             },
-        }
-    }
-
-    pub fn speed(&self) -> f32 {
-        match *self {
-            Material::Sand => 0.1f32,
-            Material::Stone => 0.1f32,
-            Material::Pressure => 0.1f32,
+            Material::Fire { .. } => RGB {
+                red: 255,
+                green: 0,
+                blue: 0,
+            },
+            Material::Pressure => RGB {
+                red: 128,
+                green: 128,
+                blue: 128,
+            },
         }
     }
 }

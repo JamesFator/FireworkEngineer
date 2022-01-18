@@ -1,5 +1,3 @@
-use crate::material::Material;
-use crate::material::State;
 use crate::material_map::MaterialMap;
 use std::collections::HashSet;
 
