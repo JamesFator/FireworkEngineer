@@ -75,6 +75,12 @@ impl SimulationEngine {
                     self.selected_material = Material::Pressure;
                 }
                 sdl2::keyboard::Keycode::W => {
+                    self.selected_material = Material::Wood;
+                }
+                sdl2::keyboard::Keycode::C => {
+                    self.selected_material = Material::Cardboard;
+                }
+                sdl2::keyboard::Keycode::Period => {
                     self.generator = !self.generator;
                 }
                 sdl2::keyboard::Keycode::Space => {
@@ -86,7 +92,7 @@ impl SimulationEngine {
                 self.mouse_button_down = true;
                 println!("(Y, X) ({}, {})", y, x);
                 for cord in
-                    brushes::circle(2.0, y, x, self.buffer_height, self.buffer_width, 0.00001)
+                    brushes::circle(5.0, y, x, self.buffer_height, self.buffer_width, 0.00001)
                 {
                     self.add_selected_to_map(cord.0 as usize, cord.1 as usize);
                 }
@@ -95,7 +101,7 @@ impl SimulationEngine {
             Event::MouseMotion { x, y, .. } => {
                 if self.mouse_button_down {
                     for cord in
-                        brushes::circle(2.0, y, x, self.buffer_height, self.buffer_width, 0.00001)
+                        brushes::circle(5.0, y, x, self.buffer_height, self.buffer_width, 0.00001)
                     {
                         self.add_selected_to_map(cord.0 as usize, cord.1 as usize);
                     }
@@ -269,7 +275,7 @@ impl UpdateCellPositions for SimulationEngine {
     fn pressure(&mut self) {
         // For each Pressure instance on the grid, apply outward forces
         let power: usize = 20;
-        let touched_pct: f64 = 0.05;
+        let min_touched_pct: f64 = 0.4;
         for y in 0..self.buffer_height {
             for x in 0..self.buffer_width {
                 if let Some(mat) = self.map.contents_at_index(y, x) {
@@ -306,7 +312,7 @@ impl UpdateCellPositions for SimulationEngine {
                         }
                     }
                 }
-                if num_touched as f64 / (num_possible as f64) < touched_pct {
+                if num_touched as f64 / (num_possible as f64) < min_touched_pct {
                     self.remove_material(y, x);
                 }
             }

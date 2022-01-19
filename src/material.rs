@@ -21,6 +21,8 @@ pub enum Material {
     // Fire duration is the amount of updates it has until it's extinguished.
     Fire { duration: i16, pressure: i8 },
     Pressure,
+    Wood,
+    Cardboard,
 }
 
 impl Material {
@@ -50,6 +52,19 @@ impl Material {
                 red: 128,
                 green: 128,
                 blue: 128,
+            },
+            Material::Wood => RGB {
+                red: 94,
+                green: 59,
+                blue: 19,
+                // red: 169,
+                // green: 120,
+                // blue: 53,
+            },
+            Material::Cardboard => RGB {
+                red: 205,
+                green: 159,
+                blue: 97,
             },
         }
     }

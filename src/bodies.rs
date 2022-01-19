@@ -1,3 +1,4 @@
+use crate::material::Material;
 use crate::material_map::MaterialMap;
 use std::collections::HashSet;
 
@@ -7,8 +8,16 @@ pub fn find_bodies(map: &MaterialMap, height: usize, width: usize) -> Vec<HashSe
     let mut bodies: Vec<HashSet<(usize, usize)>> = Vec::new();
     for y in 0..height {
         for x in 0..width {
-            if !map.something_at_index(y, x) {
-                continue;
+            if let Some(contents) = map.contents_at_index(y, x) {
+                match contents.mat {
+                    Material::Pressure => {
+                        continue; // Pressure shouldn't be in bodies
+                    }
+                    _ => {}
+                }
+
+            } else {
+                continue; // Nothing to be in body
             }
             let mut found_left = false;
             let mut left_index = 0;
