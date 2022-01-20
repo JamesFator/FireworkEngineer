@@ -1,10 +1,8 @@
 use crate::material::Material;
-use crate::material::State;
 
 #[derive(Copy, Clone, Debug)]
 pub struct MaterialRecord {
     pub mat: Material,
-    pub state: State,
     pub force_y: i8,
     pub force_x: i8,
 }

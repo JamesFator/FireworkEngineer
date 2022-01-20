@@ -1,7 +1,7 @@
+use crate::bodies;
 use crate::cell::Cell;
 use crate::cell::MaterialRecord;
 use crate::material::Material;
-use crate::material::State;
 use crate::material::RGB;
 use crate::window;
 
@@ -18,32 +18,53 @@ impl MaterialMap {
             map_width: width,
             map_height: height,
             max_index: (height - 1) * width + (width - 1),
-            mat_map: [Cell::default(); window::SCREEN_WIDTH * window::SCREEN_HEIGHT],
+            mat_map: MaterialMap::new_mat_map(),
         }
+    }
+
+    fn new_mat_map() -> [Cell; window::SCREEN_HEIGHT * window::SCREEN_WIDTH] {
+        [Cell::default(); window::SCREEN_WIDTH * window::SCREEN_HEIGHT]
+    }
+
+    fn index(&self, y: usize, x: usize) -> usize {
+        // Convert coordinate into the index in the MaterialMap array
+        y * self.map_width + x
+    }
+
+    fn index_with_force(
+        &self,
+        orig_y: usize,
+        orig_x: usize,
+        force_y: i8,
+        force_x: i8,
+    ) -> usize {
+        // Convert coordinate with forces into destination index
+        let mut y = orig_y;
+        let mut x = orig_x;
+        if y > 0 && force_y > 0 {
+            y -= 1;
+        } else if force_y < 0 {
+            y += 1;
+        }
+        if x < self.map_width && force_x > 0 {
+            x += 1;
+        } else if force_x < 0 {
+            x -= 1;
+        }
+        self.index(y, x)
     }
 
     pub fn add_material(&mut self, y: usize, x: usize, material: Material) {
         let m = MaterialRecord {
             mat: material,
-            state: State::Free,
             force_y: 0i8,
             force_x: 0i8,
         };
-        self.mat_map[y * self.map_width + x].contents = Some(m);
-    }
-
-    pub fn change_state_at_index(&mut self, y: usize, x: usize, state: State) {
-        if let Some(i) = self.mat_map[y * self.map_width + x].contents.as_mut() {
-            i.state = state;
-            if state == State::Free {
-                i.force_y = 0;
-                i.force_x = 0;
-            }
-        }
+        self.mat_map[self.index(y, x)].contents = Some(m);
     }
 
     pub fn add_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
-        let index = y * self.map_width + x;
+        let index = self.index(y, x);
         if index > self.max_index {
             return;
         }
@@ -54,7 +75,7 @@ impl MaterialMap {
     }
 
     pub fn override_force_at_index(&mut self, y: usize, x: usize, force_y: i8, force_x: i8) {
-        let index = y * self.map_width + x;
+        let index = self.index(y, x);
         if index > self.max_index {
             return;
         }
@@ -65,7 +86,7 @@ impl MaterialMap {
     }
 
     pub fn something_at_index(&self, y: usize, x: usize) -> bool {
-        let index = y * self.map_width + x;
+        let index = self.index(y, x);
         if index > self.max_index {
             return false;
         }
@@ -73,27 +94,19 @@ impl MaterialMap {
     }
 
     pub fn material_at_index(&self, y: usize, x: usize) -> Material {
-        self.mat_map[y * self.map_width + x].contents.unwrap().mat
+        self.mat_map[self.index(y, x)].contents.unwrap().mat
     }
 
     pub fn contents_at_index(&self, y: usize, x: usize) -> Option<MaterialRecord> {
-        let index = y * self.map_width + x;
+        let index = self.index(y, x);
         if index > self.max_index {
             return None;
         }
         self.mat_map[index].contents
     }
 
-    pub fn state_at_index(&self, y: usize, x: usize) -> State {
-        self.mat_map[y * self.map_width + x].contents.unwrap().state
-    }
-
     pub fn rgb_at_index(&self, y: usize, x: usize) -> RGB {
-        self.mat_map[y * self.map_width + x]
-            .contents
-            .unwrap()
-            .mat
-            .rgb()
+        self.mat_map[self.index(y, x)].contents.unwrap().mat.rgb()
     }
 
     pub fn move_material(&mut self, yfrom: usize, xfrom: usize, yto: usize, xto: usize) {
@@ -108,16 +121,54 @@ impl MaterialMap {
     }
 
     pub fn remove_at_position(&mut self, y: usize, x: usize) {
-        self.mat_map[y * self.map_width + x].contents = None;
+        self.mat_map[self.index(y, x)].contents = None;
     }
 
-    pub fn reset_states(&mut self) {
-        for y in 0..self.map_height {
-            for x in 0..self.map_width {
-                if self.something_at_index(y, x) {
-                    self.change_state_at_index(y, x, State::Free);
+    pub fn apply_forces(&mut self) {
+        let mut new_mat_map = MaterialMap::new_mat_map();
+
+        // Given the current forces on each object, average them all then override each
+        // pixel's force with the average. This way we can get bodies to move together.
+        let bodies = bodies::find_bodies(&self, self.map_height, self.map_width);
+
+        for body in bodies {
+            // Determine the average forces on the body
+            let mut total_force_y = 0 as i64;
+            let mut total_force_x = 0 as i64;
+            let mut num_pixels = 0 as i64;
+            // Special Y axis tracking so we can hit ground
+            let mut max_y = 0;
+            for coord in &body {
+                let contents = self.contents_at_index(coord.0, coord.1).unwrap();
+                total_force_y += contents.force_y as i64;
+                total_force_x += contents.force_x as i64;
+                num_pixels += 1;
+                max_y = std::cmp::max(max_y, coord.0);
+            }
+
+            // Override the forces
+            let mut avg_force_y = total_force_y / num_pixels;
+            let avg_force_x = total_force_x / num_pixels;
+            for coord in &body {
+                let mut contents = self.contents_at_index(coord.0, coord.1).unwrap();
+                contents.force_y = 0;
+                contents.force_x = 0;
+                if avg_force_y < 0 && max_y == self.map_height - 1 {
+                    avg_force_y = 0; // Prevent materials from falling below floor
                 }
+                let new_index = self.index_with_force(
+                    coord.0,
+                    coord.1,
+                    avg_force_y as i8,
+                    avg_force_x as i8,
+                );
+                if new_index > self.max_index {
+                    continue; // Item fell outside the map
+                }
+                new_mat_map[new_index].contents = Some(contents);
             }
         }
+
+        self.mat_map = new_mat_map;
     }
 }

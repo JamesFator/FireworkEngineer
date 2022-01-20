@@ -2,22 +2,16 @@ use crate::material::Material;
 use crate::material_map::MaterialMap;
 use std::collections::HashSet;
 
-const BODY_MIN_SIZE: usize = 50;
-
 pub fn find_bodies(map: &MaterialMap, height: usize, width: usize) -> Vec<HashSet<(usize, usize)>> {
     let mut bodies: Vec<HashSet<(usize, usize)>> = Vec::new();
     for y in 0..height {
         for x in 0..width {
-            if let Some(contents) = map.contents_at_index(y, x) {
-                match contents.mat {
-                    Material::Pressure => {
-                        continue; // Pressure shouldn't be in bodies
-                    }
-                    _ => {}
-                }
-
-            } else {
+            if !map.something_at_index(y, x) {
                 continue; // Nothing to be in body
+            }
+            let contents = map.contents_at_index(y, x).unwrap();
+            if contents.mat == Material::Pressure {
+                continue; // Pressure shouldn't be part of bodies
             }
             let mut found_left = false;
             let mut left_index = 0;
@@ -63,9 +57,6 @@ pub fn find_bodies(map: &MaterialMap, height: usize, width: usize) -> Vec<HashSe
             }
         }
     }
-
-    // Reduce the bodies list if there aren't enough pixels in the collection.
-    bodies.retain(|x| x.len() > BODY_MIN_SIZE);
 
     bodies
 }
